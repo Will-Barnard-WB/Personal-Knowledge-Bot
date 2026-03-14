@@ -1,0 +1,38 @@
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# Claude Agent SDK (no direct anthropic client calls)
+claude-agent-sdk==0.1.48
+
+# Async task queue (asyncio-native, Redis-backed)
+arq==0.26.1
+
+# Redis client
+redis[hiredis]==5.0.8
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+pgvector==0.3.6
+alembic==1.14.0
+
+# Settings management
+pydantic-settings==2.6.1
+
+# Voice transcription (local, fast, reliable install)
+faster-whisper==1.1.1
+ffmpeg-python==0.2.0
+
+# Embeddings use lightweight deterministic hashing (no extra heavy ML deps)
+
+# Link/article content extraction
+trafilatura==2.0.0
+
+# HTTP client (for gateway send-back)
+httpx==0.27.2
+
+# Utilities
+python-dotenv==1.0.0
+structlog==24.4.0
