@@ -1,4 +1,4 @@
-# 🤖 Personal Knowledge Bot
+# 🤖 WhatsApp AI Assistant 
 
 > A WhatsApp AI assistant that captures multi-modal content — voice notes, images, links, and text — and uses an autonomous Claude agent to organise everything into structured knowledge articles.
 
