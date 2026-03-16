@@ -101,18 +101,26 @@ async def run_message_with_agent_sdk(payload: dict, settings: Settings) -> str:
         cwd=str(project_root),
     )
 
-    final_result = "✅ Processed and saved."
+    final_result: str | None = None
     with tempfile.TemporaryDirectory(prefix="pkb-agent-") as temp_dir:
         context_path = _stage_message_context(payload, temp_dir)
         prompt = _build_initial_prompt(context_path)
 
         async for message in query(prompt=prompt, options=options):
             if isinstance(message, ResultMessage) and message.result:
-                final_result = message.result.strip()
+                candidate = message.result.strip()
+                if candidate:
+                    final_result = candidate
             elif isinstance(message, AssistantMessage):
                 blocks = [b.text for b in message.content if isinstance(b, TextBlock)]
                 if blocks:
-                    final_result = "\n".join(blocks).strip()
+                    candidate = "\n".join(blocks).strip()
+                    if candidate:
+                        final_result = candidate
 
-    log.info("sdk_turn_complete", user_id=payload["from_"])
+    if not final_result:
+        log.warning("sdk_no_user_facing_result", user_id=payload["from_"])
+        return "⚠️ I processed your message but couldn't generate a clear reply. Please try again."
+
+    log.info("sdk_turn_complete", user_id=payload["from_"], response_chars=len(final_result))
     return final_result
