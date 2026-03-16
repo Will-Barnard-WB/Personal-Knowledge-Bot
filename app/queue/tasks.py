@@ -20,6 +20,18 @@ from app.agent.sdk_runner import run_message_with_agent_sdk
 log = structlog.get_logger(__name__)
 
 
+def _normalize_whatsapp_id(value: str | None) -> str:
+  if not value:
+    return ""
+  raw = value.strip()
+  if not raw:
+    return ""
+  no_device = raw.split(":", 1)[0]
+  local = no_device.split("@", 1)[0]
+  digits = "".join(ch for ch in local if ch.isdigit())
+  return digits or local
+
+
 async def process_message(ctx: dict, payload: dict) -> None:
     """
     Core ARQ task: process one inbound WhatsApp message end-to-end.
@@ -33,12 +45,25 @@ async def process_message(ctx: dict, payload: dict) -> None:
       - ctx["settings"]: app Settings
       - ctx["http_client"]: shared httpx.AsyncClient for gateway calls
     """
-    from_ = payload["from_"]
-    msg_type = payload["type"]
-    log.info("task_started", from_=from_, type=msg_type)
-
     settings: "Settings" = ctx["settings"]
     http_client: httpx.AsyncClient = ctx["http_client"]
+
+    from_ = payload["from_"]
+    reply_to = payload.get("reply_to") or from_
+    msg_type = payload["type"]
+    owner_id = settings.my_whatsapp_id.strip()
+    owner_id_normalized = _normalize_whatsapp_id(owner_id)
+    from_normalized = _normalize_whatsapp_id(from_)
+
+    if not owner_id_normalized:
+      log.error("task_blocked_missing_owner_id")
+      return
+
+    if from_normalized != owner_id_normalized:
+      log.warning("task_ignored_non_owner", from_=from_, owner_id=owner_id)
+      return
+
+    log.info("task_started", from_=from_, type=msg_type)
 
     try:
         reply = await run_message_with_agent_sdk(payload, settings)
@@ -51,7 +76,7 @@ async def process_message(ctx: dict, payload: dict) -> None:
         )
 
     # Send reply back through the gateway
-    await _send_reply(http_client, settings.gateway_url, from_, reply)
+    await _send_reply(http_client, settings.gateway_url, reply_to, reply)
     log.info("task_completed", from_=from_)
 
 

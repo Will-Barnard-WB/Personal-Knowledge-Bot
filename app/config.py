@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Gateway
     gateway_url: str = "http://localhost:3000"
     webhook_url: str = "http://localhost:8000/webhook"
+    my_whatsapp_id: str = ""
 
     # Rate limiting
     rate_limit_max_requests: int = 10

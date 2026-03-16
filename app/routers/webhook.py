@@ -23,6 +23,18 @@ log = structlog.get_logger(__name__)
 router = APIRouter()
 
 
+def _normalize_whatsapp_id(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    raw = value.strip()
+    if not raw:
+        return ""
+    no_device = raw.split(":", 1)[0]
+    local = no_device.split("@", 1)[0]
+    digits = "".join(ch for ch in local if ch.isdigit())
+    return digits or local
+
+
 async def _get_arq_pool(request: Request) -> ArqRedis:
     """Pull the ARQ Redis pool from app state (set during startup)."""
     return request.app.state.arq_pool
@@ -38,6 +50,7 @@ async def webhook(
     # Form fields from the gateway
     from_: str = Form(..., alias="from"),
     message_id: str = Form(...),
+    reply_to: Optional[str] = Form(None),
     type: str = Form(...),
     body: str = Form(""),
     url: Optional[str] = Form(None),
@@ -56,10 +69,22 @@ async def webhook(
     """
     log.info("webhook_received", from_=from_, type=type, message_id=message_id)
 
+    settings = get_settings()
+    owner_id = settings.my_whatsapp_id.strip()
+    owner_id_normalized = _normalize_whatsapp_id(owner_id)
+    from_normalized = _normalize_whatsapp_id(from_)
+
+    if not owner_id_normalized:
+        log.error("webhook_misconfigured_missing_owner_id")
+        raise HTTPException(status_code=500, detail="MY_WHATSAPP_ID is not configured")
+
+    if from_normalized != owner_id_normalized:
+        log.warning("webhook_ignored_non_owner", from_=from_, owner_id=owner_id)
+        return WebhookResponse(ok=False, message="Ignored: bot only accepts self-chat messages")
+
     # ── Rate limit check ──────────────────────────────────────────────────────
     result = await rate_limiter.check(from_)
     if not result.allowed:
-        settings = get_settings()
         log.warning("webhook_rate_limited", from_=from_)
         # Return 200 (not 429) — the gateway will send a friendly reply
         return WebhookResponse(
@@ -80,6 +105,7 @@ async def webhook(
     # ── Build serialisable payload for the queue ──────────────────────────────
     job_payload = {
         "from_": from_,
+        "reply_to": reply_to,
         "message_id": message_id,
         "type": type,
         "body": body,

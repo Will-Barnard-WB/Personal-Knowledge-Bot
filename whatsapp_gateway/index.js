@@ -29,10 +29,75 @@ const MEDIA_DIR = path.join(__dirname, "media");
 // Bodies of messages the bot is about to send — registered BEFORE the async
 // send so message_create always sees them before the event fires.
 const BOT_PENDING_BODIES = new Set();
+const OWNER_ID_ALIASES = new Set();
 
 function registerBotReply(body) {
   BOT_PENDING_BODIES.add(body);
   setTimeout(() => BOT_PENDING_BODIES.delete(body), 30_000);
+}
+
+function resolveOwnerWhatsAppId() {
+  return process.env.MY_WHATSAPP_ID || client?.info?.wid?._serialized || null;
+}
+
+function registerOwnerAlias(value) {
+  const normalized = normalizeWhatsAppId(value);
+  if (normalized) OWNER_ID_ALIASES.add(normalized);
+}
+
+function isOwnerAlias(value) {
+  const normalized = normalizeWhatsAppId(value);
+  return !!normalized && OWNER_ID_ALIASES.has(normalized);
+}
+
+function normalizeWhatsAppId(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const noDevice = raw.split(":")[0];
+  const local = noDevice.includes("@") ? noDevice.split("@")[0] : noDevice;
+  const digits = local.replace(/\D/g, "");
+  return digits || local;
+}
+
+async function isStrictSelfChatMessage(msg, ownerId) {
+  if (!msg.fromMe) return { allowed: false, reason: "not_from_me" };
+  if (!ownerId) return { allowed: false, reason: "missing_owner_id" };
+
+  const ownerNorm = normalizeWhatsAppId(ownerId);
+  const fromNorm = normalizeWhatsAppId(msg.from);
+  const toNorm = normalizeWhatsAppId(msg.to);
+
+  if (!ownerNorm) return { allowed: false, reason: "invalid_owner_id" };
+  registerOwnerAlias(ownerNorm);
+  if (fromNorm !== ownerNorm) return { allowed: false, reason: "from_not_owner" };
+  if (toNorm && !isOwnerAlias(toNorm)) {
+    // Do not fail immediately; chat metadata may still prove this is self-chat.
+  }
+
+  try {
+    const chat = await msg.getChat();
+    if (!chat) return { allowed: false, reason: "missing_chat" };
+    if (chat.isGroup) return { allowed: false, reason: "group_chat" };
+    const chatIdRaw = chat?.id?._serialized;
+    const chatIdNorm = normalizeWhatsAppId(chatIdRaw);
+    if (chatIdNorm) registerOwnerAlias(chatIdNorm);
+
+    if (chatIdNorm && !isOwnerAlias(chatIdNorm)) {
+      return { allowed: false, reason: "chat_not_owner", details: { chatId: chat?.id?._serialized } };
+    }
+  } catch (err) {
+    // Do not hard-block on metadata lookup failures if direct owner checks passed.
+    console.warn("Chat metadata lookup failed; continuing with owner-id checks only.", err?.message || err);
+  }
+
+  if (toNorm && !isOwnerAlias(toNorm)) {
+    return { allowed: false, reason: "to_not_owner" };
+  }
+
+  if (toNorm) registerOwnerAlias(toNorm);
+
+  return { allowed: true, reason: "self_chat_ok" };
 }
 
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
@@ -64,6 +129,11 @@ client.on("authenticated", () => {
 
 client.on("ready", () => {
   console.log("🟢 WhatsApp client ready and listening for messages");
+  const selfId = client?.info?.wid?._serialized;
+  if (selfId) {
+    registerOwnerAlias(selfId);
+    console.log(`👤 Authenticated WhatsApp ID: ${selfId}`);
+  }
 });
 
 client.on("auth_failure", (msg) => {
@@ -80,8 +150,24 @@ client.on("message_create", async (msg) => {
   // Ignore status updates
   if (msg.isStatus) return;
 
-  // Only process messages YOU send to yourself — ignore everyone else.
+  // Log every incoming message for WhatsApp ID discovery
+  console.log(`📩 Message from ${msg.from} | type: ${msg.type} | fromMe: ${msg.fromMe}`);
+
+  // Only process messages you send to your own self-chat.
   if (!msg.fromMe) return;
+
+  const ownerId = resolveOwnerWhatsAppId();
+  if (!ownerId) {
+    console.warn("Ignoring outbound message: owner WhatsApp ID unavailable.");
+    return;
+  }
+
+  const decision = await isStrictSelfChatMessage(msg, ownerId);
+  if (!decision.allowed) {
+    console.log(`⛔ Blocked message (${decision.reason}) from ${msg.from} to ${msg.to || "(none)"}`);
+    return;
+  }
+  console.log(`✅ Accepted self-chat message (${decision.reason}) from ${msg.from}`);
 
   // Skip the bot's own auto-replies to prevent loops.
   // registerBotReply() is called BEFORE the async send so the body is
@@ -118,6 +204,7 @@ async function forwardToWebhook(from, msg) {
   const form = new FormData();
   form.append("from", from);
   form.append("message_id", msg.id._serialized);
+  form.append("reply_to", msg.to || from);
 
   let msgType = "text";
 
@@ -178,6 +265,18 @@ app.post("/send", async (req, res) => {
 
   if (!to || !message) {
     return res.status(400).json({ error: "Missing 'to' or 'message'" });
+  }
+
+  // Enforce: Only reply to your own WhatsApp ID
+  const MY_ID = resolveOwnerWhatsAppId();
+  if (!MY_ID) {
+    console.error("MY_WHATSAPP_ID not set in environment. Refusing to send.");
+    return res.status(500).json({ error: "Bot misconfigured: MY_WHATSAPP_ID missing." });
+  }
+  registerOwnerAlias(MY_ID);
+  if (!isOwnerAlias(to)) {
+    console.warn(`Blocked reply to ${to} — only allowed to reply to ${MY_ID}`);
+    return res.status(403).json({ error: "Bot can only reply to its owner." });
   }
 
   try {
