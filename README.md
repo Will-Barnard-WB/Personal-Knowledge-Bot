@@ -1,12 +1,19 @@
-# 🤖 WhatsApp AI Assistant 
+# 🤖 WhatsApp & Telegram AI Assistant 
 
-> A WhatsApp AI assistant that captures multi-modal content — voice notes, images, links, and text — and uses an autonomous Claude agent to organise everything into structured knowledge articles.
+> A dual-channel (WhatsApp + Telegram) AI assistant that captures multi-modal content — voice notes, images, links, and text — and uses an autonomous Claude agent to organise everything into structured knowledge articles.
 
 Built as a portfolio project to demonstrate production-grade AI engineering patterns.
 
 ---
 
 ## Architecture
+
+Two thin Node.js gateways expose messaging-stack specifics while the Python FastAPI + ARQ backend stays identical. Start either stack (or both) depending on which network you want to use:
+
+- **WhatsApp gateway** — powered by `whatsapp-web.js`, runs on port `3000`, and only processes self-chat messages from the owner device.
+- **Telegram gateway** — powered by the official Bot API, runs on port `3001`, and only processes direct messages from the configured Telegram user ID.
+
+Both gateways forward identical multipart payloads into the FastAPI app and receive replies through their `/send` endpoints.
 
 ```
  ┌────────────────────────────────────────────────────────────────────────┐
@@ -77,7 +84,7 @@ Built as a portfolio project to demonstrate production-grade AI engineering patt
 | **Rate limiting** | `app/rate_limiter.py` | Redis sorted-set sliding window, implemented as an atomic Lua script to eliminate race conditions. |
 | **Multi-modal input** | `.claude/skills/process-media/scripts/process_media.py` | Voice → Whisper; Image → Claude vision; URL → trafilatura; Text stays plain note content. |
 | **Vector search** | `.claude/skills/search-kb/scripts/search_kb.py` | pgvector cosine distance over 384-dim sentence-transformers embeddings. |
-| **Two-service design** | `whatsapp_gateway/` + `app/` | Node.js WhatsApp I/O surface + Python AI brain, connected via HTTP. |
+| **Two-service design** | `whatsapp_gateway/`, `telegram_gateway/`, `app/` | Node.js I/O shims per channel + shared Python AI brain, connected via HTTP. |
 
 ---
 
@@ -114,6 +121,8 @@ git clone <your-repo>
 cd PersonalKnowledgeBot
 cp .env.example .env
 # Edit .env — set ANTHROPIC_API_KEY
+# For WhatsApp set: MY_WHATSAPP_ID, WEBHOOK_URL (optional override)
+# For Telegram set: TELEGRAM_BOT_TOKEN, MY_TELEGRAM_ID, TELEGRAM_WEBHOOK_URL (optional)
 ```
 
 ### 2. Start infrastructure
@@ -130,6 +139,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> 🔁 **Prefer one command?** Use `./start_whatsapp.sh` or `./start_telegram.sh` to start Docker, FastAPI, the ARQ worker, and the appropriate gateway all at once. Run `./stop_<channel>.sh` to tear things down. The legacy `./start.sh` / `./stop.sh` wrappers now dispatch to these channel-specific scripts.
+
 ### 4. Start the API
 
 ```bash
@@ -143,13 +154,24 @@ uvicorn app.main:app --reload --port 8000
 arq app.queue.worker.WorkerSettings
 ```
 
-### 6. Start the WhatsApp gateway
+### 6. Start a gateway
+
+**WhatsApp (websocket bridge):**
 
 ```bash
 cd whatsapp_gateway
 npm install
 node index.js
 # → Scan the QR code with your phone (WhatsApp → Linked Devices → Link a Device)
+```
+
+**Telegram (Bot API bridge):**
+
+```bash
+cd telegram_gateway
+npm install
+TELEGRAM_BOT_TOKEN=<token> MY_TELEGRAM_ID=<your_id> node index.js
+# → Send /start to your bot from your Telegram account to confirm ownership
 ```
 
 ---
@@ -198,8 +220,13 @@ PersonalKnowledgeBot/
 │   ├── index.js            # WhatsApp I/O, media download, gateway HTTP server
 │   └── package.json
 │
+├── telegram_gateway/
+│   ├── index.js            # Telegram Bot API bridge + /send endpoint
+│   └── package.json
+│
 ├── app/
 │   ├── main.py             # FastAPI app, lifespan hooks, router mounting
+│   ├── main_telegram.py    # Telegram-only FastAPI entrypoint
 │   ├── config.py           # Pydantic settings (loads .env)
 │   ├── database.py         # SQLAlchemy async engine, pgvector init
 │   ├── rate_limiter.py     # Redis sliding-window rate limiter (Lua script)
@@ -209,11 +236,14 @@ PersonalKnowledgeBot/
 │   │   └── article.py      # Articles table (synthesised Markdown + vector)
 │   │
 │   ├── routers/
-│   │   ├── webhook.py      # POST /webhook — rate limit → enqueue ARQ job
+│   │   ├── webhook.py              # WhatsApp webhook
+│   │   └── webhook_telegram.py     # Telegram webhook
 │   │
 │   ├── queue/
-│   │   ├── tasks.py        # ARQ task: process_message()
-│   │   └── worker.py       # WorkerSettings (startup/shutdown, max_jobs)
+│   │   ├── tasks.py                # WhatsApp ARQ task
+│   │   ├── tasks_telegram.py       # Telegram ARQ task
+│   │   ├── worker.py               # WhatsApp worker settings
+│   │   └── worker_telegram.py      # Telegram worker settings
 │   │
 │   └── agent/
 │       ├── sdk_runner.py            # Claude Agent SDK runtime entrypoint (query + skill routing)
@@ -226,6 +256,10 @@ PersonalKnowledgeBot/
 ├── CLAUDE.md               # Primary project instructions for Claude Agent SDK
 ├── .claude/settings.json   # Claude project settings
 ├── .claude/skills/         # Focused workflow skills + Python scripts used by the agent
+├── start_whatsapp.sh
+├── stop_whatsapp.sh
+├── start_telegram.sh
+├── stop_telegram.sh
 └── .env.example
 ```
 

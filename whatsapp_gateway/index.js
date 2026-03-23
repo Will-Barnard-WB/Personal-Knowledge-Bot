@@ -155,7 +155,7 @@ client.on("message_create", async (msg) => {
 
   // Only process messages you send to your own self-chat.
   if (!msg.fromMe) return;
-
+  
   const ownerId = resolveOwnerWhatsAppId();
   if (!ownerId) {
     console.warn("Ignoring outbound message: owner WhatsApp ID unavailable.");

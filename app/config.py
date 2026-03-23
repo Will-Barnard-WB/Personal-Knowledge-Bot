@@ -29,10 +29,15 @@ class Settings(BaseSettings):
     app_port: int = 8000
     log_level: str = "INFO"
 
-    # Gateway
+    # Gateway — WhatsApp
     gateway_url: str = "http://localhost:3000"
     webhook_url: str = "http://localhost:8000/webhook"
     my_whatsapp_id: str = ""
+
+    # Gateway — Telegram
+    telegram_gateway_url: str = "http://localhost:3001"
+    telegram_webhook_url: str = "http://localhost:8000/telegram-webhook"
+    my_telegram_id: str = ""
 
     # Rate limiting
     rate_limit_max_requests: int = 10

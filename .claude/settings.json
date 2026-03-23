@@ -3,7 +3,8 @@
   "permissions": {
     "allow": [
       "Skill",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(crontab *)"
     ],
     "deny": [
       "Read(./.env)",
