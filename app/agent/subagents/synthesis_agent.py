@@ -18,13 +18,13 @@ Each sub-call is a fresh Claude message — no shared state — demonstrating
 how to fan out independent LLM tasks and merge their results.
 """
 import asyncio
-import hashlib
 from typing import Optional
 
 import structlog
 from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
 
 from app.database import get_db
+from app.embeddings import embed_text
 from app.models.note import Note
 from app.models.article import Article
 from sqlalchemy import select
@@ -66,31 +66,6 @@ Extracted facts from all notes:
 ---
 
 Write the complete Markdown article now. No preamble — start directly with the # Title."""
-
-
-async def embed_text(text: str) -> list[float]:
-    def _embed_sync(t: str) -> list[float]:
-        dim = 384
-        values = [0.0] * dim
-        tokens = t.lower().split()
-        if not tokens:
-            return values
-
-        for token in tokens:
-            digest = hashlib.sha256(token.encode("utf-8")).digest()
-            idx_a = int.from_bytes(digest[0:2], "big") % dim
-            idx_b = int.from_bytes(digest[2:4], "big") % dim
-            sign = 1.0 if digest[4] % 2 == 0 else -1.0
-            values[idx_a] += sign
-            values[idx_b] += 0.5 * sign
-
-        norm = sum(v * v for v in values) ** 0.5
-        if norm > 0:
-            values = [v / norm for v in values]
-        return values
-
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _embed_sync, text[:8192])
 
 
 async def _extract_facts_from_note(

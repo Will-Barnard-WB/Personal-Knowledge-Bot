@@ -25,7 +25,8 @@ pydantic-settings==2.6.1
 faster-whisper==1.1.1
 ffmpeg-python==0.2.0
 
-# Embeddings use lightweight deterministic hashing (no extra heavy ML deps)
+# Semantic embeddings (all-MiniLM-L6-v2, 384-dim, ~80MB download on first use)
+sentence-transformers==3.4.1
 
 # Link/article content extraction
 trafilatura==2.0.0

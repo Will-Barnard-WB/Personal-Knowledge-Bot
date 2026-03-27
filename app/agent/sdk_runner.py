@@ -1,4 +1,4 @@
-"""Claude Agent SDK runner for inbound WhatsApp payloads.
+"""Claude Agent SDK runner for inbound WhatsApp/Telegram payloads.
 
 This module keeps the runtime thin:
 - project behaviour lives primarily in `CLAUDE.md` + `.claude/skills/`
@@ -73,7 +73,7 @@ def _build_initial_prompt(context_path: Path) -> str:
     context = json.loads(context_path.read_text())
 
     return "\n".join([
-        "Handle this inbound WhatsApp message for the Personal Knowledge Bot.",
+        "Handle this inbound WhatsApp or Telegram message for the Personal Knowledge Bot.",
         f"Context JSON: {context_path}",
         f"User ID: {context['user_id']}",
         f"Message type: {context['message_type']}",
