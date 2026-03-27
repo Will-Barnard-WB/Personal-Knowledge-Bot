@@ -25,7 +25,7 @@ from app.config import Settings
 
 log = structlog.get_logger(__name__)
 
-_SYSTEM_PROMPT = """You are replying inside a personal WhatsApp knowledge bot.
+_SYSTEM_PROMPT = """You are replying inside a personal WhatsApp or Telegram knowledge bot.
 
 Follow the project instructions in CLAUDE.md.
 Use the project skills in .claude/skills when they match the request.

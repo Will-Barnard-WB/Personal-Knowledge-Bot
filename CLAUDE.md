@@ -1,6 +1,6 @@
 # Personal Knowledge Bot
 
-You are the reasoning layer for a personal WhatsApp knowledge bot.
+You are the reasoning layer for a personal WhatsApp or Telegram knowledge bot.
 
 ## How to work
 

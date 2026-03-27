@@ -64,7 +64,7 @@ start_fastapi() {
     echo "  ✓ FastAPI already running (PID $EXISTING)"
     return
   fi
-  nohup $API_CMD >"$API_LOG" 2>&1 &
+  nohup ${=API_CMD} >"$API_LOG" 2>&1 &
   echo $! > "$API_PID_FILE"
   sleep 1
   if ! kill -0 "$(cat "$API_PID_FILE")" 2>/dev/null; then
@@ -84,7 +84,7 @@ start_worker() {
     echo "  ✓ Worker already running (PID $EXISTING)"
     return
   fi
-  nohup $WORKER_CMD >"$WORKER_LOG" 2>&1 &
+  nohup ${=WORKER_CMD} >"$WORKER_LOG" 2>&1 &
   echo $! > "$WORKER_PID_FILE"
   sleep 1
   if ! kill -0 "$(cat "$WORKER_PID_FILE")" 2>/dev/null; then
