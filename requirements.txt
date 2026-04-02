@@ -34,6 +34,9 @@ trafilatura==2.0.0
 # HTTP client (for gateway send-back)
 httpx==0.27.2
 
+# MCP server (Model Context Protocol — stdio transport for fine-grained tool exposure)
+mcp>=1.0.0
+
 # Utilities
 python-dotenv==1.0.0
 structlog==24.4.0

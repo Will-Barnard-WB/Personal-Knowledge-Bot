@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "personal-kb": {
+      "command": "python",
+      "args": ["-m", "app.mcp_server"]
+    }
+  }
+}

@@ -22,6 +22,7 @@ from claude_agent_sdk import (
 )
 
 from app.config import Settings
+from app.rag import retrieve_context
 
 log = structlog.get_logger(__name__)
 
@@ -69,6 +70,25 @@ def _stage_message_context(payload: dict, temp_dir: str) -> Path:
     return context_path
 
 
+async def _rag_prefix(payload: dict) -> str:
+    """Return a RELEVANT CONTEXT prefix for text messages, or empty string."""
+    if payload.get("type") not in ("text", None):
+        return ""
+    body = (payload.get("body") or "").strip()
+    if len(body) <= 10:
+        return ""
+
+    context = await retrieve_context(
+        user_id=payload["from_"],
+        query=body,
+        max_results=2,
+        min_score=0.5,
+    )
+    if not context:
+        return ""
+    return f"RELEVANT CONTEXT:\n{context}\n---\n\n"
+
+
 def _build_initial_prompt(context_path: Path) -> str:
     context = json.loads(context_path.read_text())
 
@@ -94,6 +114,11 @@ async def run_message_with_agent_sdk(payload: dict, settings: Settings) -> str:
         allowed_tools=[
             "Skill",
             "Bash",
+            "mcp__personal-kb__transcribe_audio",
+            "mcp__personal-kb__analyze_image",
+            "mcp__personal-kb__extract_url",
+            "mcp__personal-kb__capture_note",
+            "mcp__personal-kb__search_kb",
         ],
         setting_sources=["project"],
         max_turns=8,
@@ -104,7 +129,8 @@ async def run_message_with_agent_sdk(payload: dict, settings: Settings) -> str:
     final_result: str | None = None
     with tempfile.TemporaryDirectory(prefix="pkb-agent-") as temp_dir:
         context_path = _stage_message_context(payload, temp_dir)
-        prompt = _build_initial_prompt(context_path)
+        rag_prefix = await _rag_prefix(payload)
+        prompt = rag_prefix + _build_initial_prompt(context_path)
 
         async for message in query(prompt=prompt, options=options):
             if isinstance(message, ResultMessage) and message.result:
